@@ -29,14 +29,15 @@ Binary = imbinarize(I, AdaptT); % Ö±½Ó¶þÖµ»¯
 subplot(141); imshow(Binary); title('Ö±½ÓÊ¹ÓÃ×ÔÊÊÓ¦ãÐÖµ'); % ÏÔÊ¾¶þÖµ»¯Í¼Ïñ
 Binary = im2double(tempI).^16;   % À­Éì
 subplot(144); imshow(Binary); title('À­Éì'); % ÏÔÊ¾¶þÖµ»¯Í¼Ïñ
+BinaryImage = Binary;
 
 h_point = detectHarrisFeatures(Binary); % Harris½Çµã¼ì²â
 
 condi_roi = regionprops(im2bw(1.0 - Binary), 'area', 'boundingbox'); % Çóroi
 max_area = 0;
 index_k = 0;
-figure(); subplot(131); imshow(Binary); title('¶þÖµ»¯');
-subplot(132); imshow(Binary); title('ROIÓë½Çµã¼ì²â'); hold on;
+figure(); subplot(141); imshow(Binary); title('¶þÖµ»¯');
+subplot(142); imshow(Binary); title('ROIÓë½Çµã¼ì²â'); hold on;
 for i=1:length(condi_roi)
     area = condi_roi(i).Area;
     if area > max_area
@@ -49,13 +50,100 @@ rectangle('position', condi_roi(index_k).BoundingBox, 'EdgeColor', 'r', 'lineWid
 plot(h_point);
 hold off;
 
+Binary = BinaryImage;
 ROI = imcrop(Binary, condi_roi(index_k).BoundingBox);
-tp_point = detectHarrisFeatures(ROI);
+ROI_edge = edge(ROI, 'canny');
+[H_, T_, R_] = hough(ROI_edge);
+P_ = houghpeaks(H_, 5);
+lines = houghlines(ROI_edge, T_, R_, P_, 'FillGap', 5, 'MinLength', 30);
+% ÏÔÊ¾ROI hough±ßÌáÈ¡½á¹û
+subplot(143); imshow(ROI); title('¶ÔROI houghÖ±ÏßÌáÈ¡½á¹û'); hold on;
+max_len = 0;
+for k = 1:length(lines)
+   xy = [lines(k).point1; lines(k).point2];
+   plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
+
+   plot(xy(1,1),xy(1,2),'x','LineWidth',2,'Color','yellow');
+   plot(xy(2,1),xy(2,2),'x','LineWidth',2,'Color','red');
+
+   len = norm(lines(k).point1 - lines(k).point2);
+   if ( len > max_len)
+      max_len = len;
+      xy_long = xy;
+   end
+end
+
+% ÇóhoughÌáÈ¡µÄÖ±Ïß½»µã£¬Âú×ãÌõ¼þ£º½»µãÔÚROIÄÚ
+ic = 1; % ½»µã¼ÆÊýÆ÷
+cross_point = zeros([500, 2]);  % ±£´æ½»µã
+for i=1:length(lines)
+    for j=i+1:length(lines)
+        a = lines(i).point1; b = lines(i).point2;
+        c = lines(j).point1; d = lines(j).point2;
+        %Èç¹û·ÖÄ¸Îª0 ÔòÆ½ÐÐ»ò¹²Ïß, ²»Ïà½» 
+        denominator = (b(2) - a(2))*(d(1) - c(1)) - (a(1) - b(1))*(c(2) - d(2));
+        if denominator==0
+            continue;
+        end
+        x = ((b(1) - a(1)) * (d(1) - c(1)) * (c(2) - a(2))...
+                + (b(2) - a(2)) * (d(1) - c(1)) * a(1)...
+                - (d(2) - c(2)) * (b(1) - a(1)) * c(1) ) / denominator;
+        y = -( (b(2) - a(2)) * (d(2) - c(2)) * (c(1) - a(1))...
+                + (b(1) - a(1)) * (d(2) - c(2)) * a(2)...
+                - (d(1) - c(1)) * (b(2) - a(2)) * c(2) ) / denominator;
+            
+        if x > N || x <= 0 || y > M || y <= 0
+            continue
+        end
+        
+        cross_point(ic, 1) = x; cross_point(ic, 2) = y;
+        ic = ic + 1;
+    end
+end
+cross_point(ic:500 , :) = []; % É¾³ý½»µãÊý×éÖÐ¶àÓàµÄÔªËØ
+subplot(144); imshow(ROI); title('houghÌáÈ¡Ö±ÏßµÄ½»µã'); hold on;
+for i=1:ic-1
+    plot(cross_point(i,1), cross_point(i, 2), 'x');
+end
+
+% Ñ°ÕÒÖÐÐÄµã
+centerP = mean(cross_point);
+% È·¶¨±ß¿òËÄ¶¥µã£¬²¢ÅÅÐò£¬×óÉÏ¡¢ÓÒÉÏ¡¢×óÏÂ¡¢ÓÒÏÂ
+disMin = zeros(5);
+disMin(:) = 1e+8;
+before_point(:) = [roi_pos(1), roi_pos(2)];
+for i=1:ic-1
+    dis_center_cross = sqrt((cross_point(1) - centerP(1))^2 + (cross_point(2) - centerP(2))^2);
+    if cross_point(i, 1) < centerP(1) && cross_point(i, 2) < centerP(2) && disMin(1) > dis_center_cross
+        disMin(1) = dis_center_cross;
+        dot(1, :) = cross_point(i,:);
+        dot(1, :) = before_point + dot(1, :);
+    elseif cross_point(i, 1) > centerP(1) && cross_point(i, 2) < centerP(2) && disMin(2) > dis_center_cross
+        disMin(2) = dis_center_cross;
+        dot(2, :) = cross_point(i,:);
+        dot(2, :) = before_point + dot(2, :);
+    elseif cross_point(i, 1) < centerP(1) && cross_point(i, 2) > centerP(2) && disMin(3) > dis_center_cross
+        disMin(3) = dis_center_cross;
+        dot(3, :) = cross_point(i,:);
+        dot(3, :) = before_point + dot(3, :);
+    elseif cross_point(i, 1) > centerP(1) && cross_point(i, 2) > centerP(2) && disMin(4) > dis_center_cross
+        disMin(4) = dis_center_cross;
+        dot(4, :) = cross_point(i,:);
+        dot(4, :) = before_point + dot(4, :);
+    end
+end
+
+figure();
+subplot(121); imshow(BinaryImage); title('ËÄ¸ö¶¥µãget¡Ì'); hold on;
+for i=1: 4
+    plot(dot(i, 1), dot(i, 2), 'x');
+end
+
+
+% % Ñ°ÕÒ±ßÔµËÄ¸ö¶¥µã(ÎÒµÄ·½·¨)
 % figure(); imshow(ROI); hold on;
 % plot(tp_point);
 % hold off;
-
-% % Ñ°ÕÒ±ßÔµËÄ¸ö¶¥µã(ÎÒµÄ·½·¨)
 % roi_pos = uint16(condi_roi(index_k).BoundingBox);
 % roi_mpt = zeros(size(ROI));
 % for i = 1:roi_pos(3)
@@ -162,7 +250,6 @@ tp_point = detectHarrisFeatures(ROI);
 
 
 %% Í¼ÏñÐ£Õý
-%dot = ginput(4);
 dot = double(dot);
 roi_pos = double(roi_pos);
 w=round(sqrt((dot(1,1)-dot(2,1))^2+(dot(1,2)-dot(2,2))^2));     %´ÓÔ­ËÄ±ßÐÎ»ñµÃÐÂ¾ØÐÎ¿í
@@ -224,8 +311,6 @@ for i = 1-delta_y:height-delta_y                        %´Ó±ä»»Í¼ÏñÖÐ·´ÏòÑ°ÕÒÔ­Í
     end
 end
 
-subplot(133); imshow(uint8(imgn)); title('Í¼ÏñÐ£Õý');
+subplot(122); imshow(uint8(imgn)); title('Í¼ÏñÐ£Õý');
 
-%figure(); imshow(Binary); hold on;
-% rectangle('Position', [dot(1, 1), dot(1, 2), dot(2, 1)-dot(1,1), dot(3,2)-dot(1,2)], 'EdgeColor', 'r', 'lineWidth', 1);
-% hold off;
+%% Ñ¡ÔñÌâÊ¶±ð
