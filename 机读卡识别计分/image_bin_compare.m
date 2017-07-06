@@ -2,7 +2,8 @@
 close all;
 clc;
 
-I = imread('./img/测试图片/苹果6s-P1 (1).jpg');
+%% 读取图片
+I = imread('./img/新模板测试图片/ipadair (4).jpg');
 I = imresize(I, [640, 360]);    % 图像大小修改，防止分辨率过大使运行时间太长
 [M, N, pass] = size(I);
 if pass > 1 % 判断是否是灰度图像
@@ -12,6 +13,8 @@ end
 figure();
 subplot(131);
 imshow(I);title('原图');
+
+%% 图像预处理
 Level = graythresh(I);
 AdaptT = adaptthresh(I, 'Statistic', 'median',  'ForegroundPolarity', 'dark'); % 自适应阈值
 Bg = AdaptT * 255; % 扩展
@@ -33,6 +36,7 @@ BinaryImage = Binary;
 
 h_point = detectHarrisFeatures(Binary); % Harris角点检测
 
+% ROI检测
 condi_roi = regionprops(im2bw(1.0 - Binary), 'area', 'boundingbox'); % 求roi
 max_area = 0;
 index_k = 0;
@@ -50,16 +54,36 @@ rectangle('position', roi_pos, 'EdgeColor', 'r', 'lineWidth', 1);
 plot(h_point.selectStrongest(50)); % harris交点检测结果
 hold off;
 
+% hough直线提取
 Binary = BinaryImage;
 ROI = imcrop(Binary, roi_pos);
 ROI_edge = edge(ROI, 'canny');
 [H_, T_, R_] = hough(ROI_edge);
-P_ = houghpeaks(H_, 5);
-lines = houghlines(ROI_edge, T_, R_, P_, 'FillGap', 5, 'MinLength', 30);
+P_ = houghpeaks(H_, 30);
+lines = houghlines(ROI_edge, T_, R_, P_, 'FillGap', 5, 'MinLength', 40);
+
+% 消除共线直线
+break_vis = zeros([1, 500], 'uint8');
+for i=1:length(lines)
+    if break_vis(i) == 1 % 之前已经被共线的线计算过了，这里直接跳过
+        continue;
+    end
+    for j=i+1:length(lines)
+        %如果两直线共线则标记
+        if abs(lines(i).theta - lines(j).theta) <= 0 && abs(lines(i).rho - lines(j).rho) <= 0
+            break_vis(j) = 1;
+            continue;
+        end
+    end
+end  
+
 % 显示ROI hough边提取结果
 subplot(143); imshow(ROI); title('对ROI hough直线提取结果'); hold on;
 max_len = 0;
 for k = 1:length(lines)
+    if break_vis(k) == 1
+        continue;
+    end
    xy = [lines(k).point1; lines(k).point2];
    plot(xy(:,1),xy(:,2),'LineWidth',2,'Color','green');
 
@@ -77,14 +101,16 @@ end
 ic = 1; % 交点计数器
 cross_point = zeros([500, 2]);  % 保存交点
 for i=1:length(lines)
+    if break_vis(i) == 1 % 之前已经被共线的线计算过了，这里直接跳过
+        continue;
+    end
     for j=i+1:length(lines)
-        a = lines(i).point1; b = lines(i).point2;
-        c = lines(j).point1; d = lines(j).point2;
-        %如果分母为0 则平行或共线, 不相交 
-        denominator = (b(2) - a(2))*(d(1) - c(1)) - (a(1) - b(1))*(c(2) - d(2));
-        if denominator==0
+        if break_vis(j) == 1 % 之前已经被共线的线计算过了，这里直接跳过
             continue;
         end
+        a = lines(i).point1; b = lines(i).point2;
+        c = lines(j).point1; d = lines(j).point2;
+        denominator = (b(2) - a(2))*(d(1) - c(1)) - (a(1) - b(1))*(c(2) - d(2));
         x = ((b(1) - a(1)) * (d(1) - c(1)) * (c(2) - a(2))...
                 + (b(2) - a(2)) * (d(1) - c(1)) * a(1)...
                 - (d(2) - c(2)) * (b(1) - a(1)) * c(1) ) / denominator;
@@ -93,7 +119,7 @@ for i=1:length(lines)
                 - (d(1) - c(1)) * (b(2) - a(2)) * c(2) ) / denominator;
         
         % 省略超过边界的点
-        if x > size(ROI, 2) || x <= 0 || y > size(ROI, 1) || y <= 0
+        if x - size(ROI, 2) >= 20 || x <= -20 || y - size(ROI, 1) >= 20 || y <= -20
             continue
         end
         
@@ -103,13 +129,13 @@ for i=1:length(lines)
 end
 cross_point(ic:500 , :) = []; % 删除交点数组中多余的元素
 subplot(144); imshow(ROI); title('hough提取直线的交点'); hold on;
-plot(centerP(1), centerP(2), 'o');
 for i=1:ic-1
     plot(cross_point(i,1), cross_point(i, 2), 'x');
 end
-
 % 寻找中心点
 centerP = mean(cross_point);
+plot(centerP(1), centerP(2), 'o'); hold off;
+
 % 确定边框四顶点，并排序，左上、右上、左下、右下
 disMin = zeros([1, 5]);
 disMin(:) = -1e+8;
@@ -141,121 +167,103 @@ for i=1: 4
     plot(dot(i, 1), dot(i, 2), 'x');
 end
 
-
-% % 寻找边缘四个顶点(我的方法)
-% figure(); imshow(ROI); hold on;
-% plot(tp_point);
-% hold off;
-% roi_pos = uint16(condi_roi(index_k).BoundingBox);
-% roi_mpt = zeros(size(ROI));
-% for i = 1:roi_pos(3)
-%     for j = 1:10
-%         roi_mpt(j, i) = 1;
-%     end
-% end
-% for i = 1:roi_pos(3)
-%     for j = -10:0
-%         roi_mpt(roi_pos(4) + j, i) = 1;
-%     end
-% end
-% for i = 1:roi_pos(4)
-%     for j = 1:10
-%         roi_mpt(i, j) = 1;
-%     end
-% end
-% for i = 1:roi_pos(4)
-%     for j = -10:0
-%         roi_mpt(i, roi_pos(3) + j) = 1;
-%     end
-% end
-% %figure();imshow(roi_mpt);
-% 
-% centerX = (roi_pos(1) + roi_pos(3))/2; % 中心点的x坐标
-% centerY = (roi_pos(2) + roi_pos(4))/2; % 中心点的y坐标
-% vis = zeros(1, M, 'uint16');     % 遍历相差记录
-% for i=1:length(tp_point)
-%     temp_pos = uint16(tp_point(i).Location);
-%     if roi_mpt(temp_pos(2), temp_pos(1)) == 0
-%         continue;
-%     end
-%     if temp_pos(1) < centerX && temp_pos(2) < centerY
-%         if abs(temp_pos(1) - roi_pos(1)) < abs(temp_pos(2) - roi_pos(2))    % y轴变化了k
-%             k = abs(temp_pos(2) - roi_pos(2));
-%         else 
-%             k = abs(temp_pos(1) - roi_pos(1));
-%         end
-%     elseif temp_pos(1) > centerX && temp_pos(2) < centerY
-%         if abs(temp_pos(1) - roi_pos(1) - roi_pos(3)) < abs(temp_pos(2) - roi_pos(2))
-%             k = abs(temp_pos(2) - roi_pos(2));
-%         else 
-%             k = abs(temp_pos(1) - roi_pos(1) - roi_pos(3));
-%         end
-% 
-%     elseif temp_pos(1) < centerX && temp_pos(2) > centerY
-%         if abs(temp_pos(1) - roi_pos(1)) < abs(temp_pos(2) - roi_pos(2) - roi_pos(4))
-%             k = abs(temp_pos(2) - roi_pos(2) - roi_pos(4));
-%         else 
-%             k = abs(temp_pos(1) - roi_pos(1));
-%         end
-%     elseif temp_pos(1) > centerX && temp_pos(2) > centerY
-%         if abs(temp_pos(1) - roi_pos(1) - roi_pos(3)) < abs(temp_pos(2) - roi_pos(2) - roi_pos(4))
-%             k = abs(temp_pos(2) - roi_pos(2) - roi_pos(4));
-%         else 
-%             k = abs(temp_pos(1) - roi_pos(1) - roi_pos(3));
-%         end
-%     end
-%     if k == 0
-%         continue;
-%     end
-%     vis(k) = vis(k) + 1;
-%     if vis(k) >= 2
-%         if temp_pos(1) < centerX && temp_pos(2) < centerY
-%             if abs(temp_pos(1) - roi_pos(1)) < abs(temp_pos(2) - roi_pos(2))    % y轴变化了k
-%                 swi = 1;
-%             else 
-%                 swi = 0;
-%             end
-%         elseif temp_pos(1) > centerX && temp_pos(2) < centerY
-%             if abs(temp_pos(1) - roi_pos(1) - roi_pos(3)) < abs(temp_pos(2) - roi_pos(2))
-%                 swi = 0;
-%             else
-%                 swi = 1;
-%             end
-%         elseif temp_pos(1) < centerX && temp_pos(2) > centerY
-%             if abs(temp_pos(1) - roi_pos(1)) < abs(temp_pos(2) - roi_pos(2) - roi_pos(4))
-%                 swi = 0;
-%             else 
-%                 swi = 1;
-%             end
-%         elseif temp_pos(1) > centerX && temp_pos(2) > centerY
-%            	if abs(temp_pos(1) - roi_pos(1) - roi_pos(3)) < abs(temp_pos(2) - roi_pos(2) - roi_pos(4))
-%                 swi = 1;
-%             else 
-%                 swi = 0;
-%             end
-%         end
-%         if swi == 1
-%             dot(1, 1) = roi_pos(1) + k;                 dot(1, 2) = roi_pos(2);
-%             dot(2, 1) = roi_pos(1) + roi_pos(3);        dot(2, 2) = roi_pos(2) + k;
-%             dot(3, 1) = roi_pos(1);                     dot(3, 2) = roi_pos(2) + roi_pos(4) - k;
-%             dot(4, 1) = roi_pos(1) + roi_pos(3) - k;    dot(4, 2) = roi_pos(2) + roi_pos(4);
-%         else
-%             dot(1, 1) = roi_pos(1);                     dot(1, 2) = roi_pos(2) + k;
-%             dot(2, 1) = roi_pos(1) + roi_pos(3) - k;    dot(2, 2) = roi_pos(2);
-%             dot(3, 1) = roi_pos(1) + k;                 dot(3, 2) = roi_pos(2) + roi_pos(4);
-%             dot(4, 1) = roi_pos(1) + roi_pos(3);        dot(4, 2) = roi_pos(2) + roi_pos(4) - k;
-%         end
-%         break;
-%     end
-% end
-
 %% 图像校正
 fixPoints = [roi_pos(1), roi_pos(2); roi_pos(1) + roi_pos(3), roi_pos(2);...
-    roi_pos(1), roi_pos(2) + roi_pos(4); roi_pos(1) + roi_pos(3), roi_pos(2) + roi_pos(4)];
+    roi_pos(1), roi_pos(2) + roi_pos(4); roi_pos(1) + roi_pos(3), roi_pos(2) + roi_pos(4)]; % 以ROI的左上坐标作为fixedPoint
 tfrom = fitgeotrans(dot, fixPoints, 'projective');
 corrected_img = imwarp(I, tfrom);
 subplot(122); imshow(corrected_img); title('图像校正');
 
 %% 选择题识别
+% 二值化
+I = corrected_img;
+I_double = im2double(I);
+AdaptT = adaptthresh(I, 'Statistic', 'median',  'ForegroundPolarity', 'dark'); % 自适应阈值
+tempI = 1.0 - AdaptT + I_double;
+Binary = tempI .^ 16;
+BinaryImage = Binary;
+figure();
+subplot(121); imshow(im2bw(Binary)); title('校正后的二值图'); hold on; 
+% ROI提取
+condi_roi = regionprops(im2bw(Binary), 'area', 'BoundingBox');
+[s_condi_roi, index] = sort([condi_roi.Area], 'descend'); % 对结构体排序,index为b中的数值在a中对应的索引
+roi(1, 1:4) = condi_roi(index(2)).BoundingBox; roi(2, 1:4) = condi_roi(index(3)).BoundingBox; 
+roi(3, 1:4) = condi_roi(index(4)).BoundingBox; % 之所以从index(2)开始是因为index(1)为图片整体的外接框
+rectangle('position', roi(1,:), 'EdgeColor', 'r', 'lineWidth', 1);  
+rectangle('position', roi(2,:), 'EdgeColor', 'r', 'lineWidth', 1);  hold off;
+% 选择题位置识别
+rect_choose = imcrop(Binary, roi(1, :));
+rect_choose = medfilt2(rect_choose, floor(size(rect_choose)/16)*2+1);
+subplot(122); imshow(rect_choose); 
 
+%% 数字识别
+rect_number = imcrop(Binary, roi(2, :));
+rect_number = im2bw(rect_number);
+figure(); imshow(rect_number); 
+[height, width] = size(rect_number); ratio = width / 10.0;
+line_width = 0.2 * ratio;
+row_1_begin_pos = [2.5 * ratio, 3.3 * ratio]; % 第一排第一个数字的坐标(x, y)
+row_2_begin_pos = [2.5 * ratio, 6.6 * ratio]; % 第二排第一个数字的坐标  
 
+% 读入训练数据集
+digitpath = './digittest/训练';
+digitpaths = dir(digitpath);
+cnt = 0;
+for i = 3: length(digitpaths)
+    filename = dir([digitpath, '/', digitpaths(i).name, '/']);
+    for j = 3: length(filename)
+        cnt = cnt + 1;
+        trainSets(cnt).File = [digitpath, '/', digitpaths(i).name, '/', filename(j).name];
+        trainSets(cnt).Label = double(i-3);
+    end
+end
+digitNumber = cnt;
+% 获取训练数据特征
+cellSize = [4, 4];
+tp_image = readImage(trainSets, 1);
+imgSize = size(tp_image);
+[hog_4x4, ~] = extractHOGFeatures(tp_image,'CellSize',[4 4]);
+hogFeatureSize = length(hog_4x4);
+trainingFeatures = extracthog(trainSets,digitNumber,imgSize,cellSize,hogFeatureSize);
+trainingLabels = cat(1, trainSets.Label);
+% 训练分类器
+labelNumber = 10;
+model = cell(labelNumber,1);
+for k=0:labelNumber-1
+    label=trainingLabels==k;
+    model{k+1} = svmtrain(trainingFeatures,label);%fitcsvm
+end
+% 测试集的准确性
+classt=zeros(digitNumber,labelNumber);
+for i = 1: labelNumber
+    classt(:,i) = svmclassify(model{i},trainingFeatures); 
+end
+for j=1:digitNumber
+    p =find(classt(j,:)==1);
+    labelt(j).predict=p-1;
+end
+labeltp=cat(1,labelt.predict);%没有进行多标签处理
+labeltp=reshape(labeltp,[digitNumber/labelNumber,labelNumber]);
+[labelreal,~]=meshgrid(1:labelNumber,1:digitNumber/labelNumber);
+deltp=labeltp-labelreal+1;
+CorrectRate=1-sum(deltp(:))/digitNumber;
+%预测
+testfile='digittest/手写字/';
+% Extract HOG features from the test set
+picnames=dir([testfile '*.png']);
+digitNumber=size(picnames,1);
+for j=digitNumber-labelNumber+1:digitNumber
+    testset(j-digitNumber+labelNumber).File=[testfile picnames(j).name];
+end 
+digitNumber=10;
+testFeatures = extracthog(testset,digitNumber,imgSize,cellSize,hogFeatureSize);
+%轮流预测
+for j=1:digitNumber
+    for k=1:labelNumber
+       classp(j,k) = svmclassify(model{k},testFeatures(j,:));
+    end
+    p =find(classp(j,:)==1);
+    if ~isempty(p)
+        labelp(j).predict=p-1;
+    end
+end
