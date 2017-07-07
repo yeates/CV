@@ -3,7 +3,7 @@ close all;
 clc;
 
 %% 读取图片
-I = imread('./img/新模板测试图片/ipadair (4).jpg');
+I = imread('./img/新模板测试图片/苹果6s (18).jpg');
 I = imresize(I, [640, 360]);    % 图像大小修改，防止分辨率过大使运行时间太长
 [M, N, pass] = size(I);
 if pass > 1 % 判断是否是灰度图像
@@ -197,13 +197,39 @@ rect_choose = medfilt2(rect_choose, floor(size(rect_choose)/16)*2+1);
 subplot(122); imshow(rect_choose); 
 
 %% 数字识别
+% 选取数字区域
 rect_number = imcrop(Binary, roi(2, :));
 rect_number = im2bw(rect_number);
-figure(); imshow(rect_number); 
-[height, width] = size(rect_number); ratio = width / 10.0;
-line_width = 0.2 * ratio;
+figure(); imshow(rect_number); hold on; 
+[height, width] = size(rect_number); ratio = height / 10.0;
+line_width = 0.17 * ratio;
 row_1_begin_pos = [2.5 * ratio, 3.3 * ratio]; % 第一排第一个数字的坐标(x, y)
-row_2_begin_pos = [2.5 * ratio, 6.6 * ratio]; % 第二排第一个数字的坐标  
+row_2_begin_pos = [2.5 * ratio, 6.6 * ratio]; % 第二排第一个数字的坐标(x, y)
+plot(row_1_begin_pos(1), row_1_begin_pos(2), '+');
+plot(row_2_begin_pos(1), row_2_begin_pos(2), '+');
+% 计算第一排的数字图像
+row_1(1, 1:2) = [row_1_begin_pos(1) + line_width, row_1_begin_pos(2) + line_width];
+row_1(1, 3:4) = [ratio, ratio*2];
+for i = 2:6
+    row_1(i, 1:2) = [row_1(i-1, 1) + row_1(i-1, 3) + line_width, row_1(i-1, 2)]; 
+    row_1(i, 3:4) = [row_1(i-1, 3), row_1(i-1, 4)];
+end
+for i = 1:6
+    rectangle('position', row_1(i, :), 'EdgeColor', 'r', 'lineWidth', 1);
+end
+
+% 计算第二排的数字图像
+row_2(1, 1:2) = [row_2_begin_pos(1) + line_width, row_2_begin_pos(2) + line_width];
+row_2(1, 3:4) = [ratio, ratio*2];
+for i = 2:18
+    row_2(i, 1:2) = [row_2(i-1, 1) + row_2(i-1, 3) + line_width, row_2(i-1, 2)]; 
+    row_2(i, 3:4) = [row_2(i-1, 3), row_2(i-1, 4)];
+end
+for i = 1:18
+    rectangle('position', row_2(i, :), 'EdgeColor', 'r', 'lineWidth', 1);
+end
+hold off;
+
 
 % 读入训练数据集
 digitpath = './digittest/训练';
@@ -218,52 +244,56 @@ for i = 3: length(digitpaths)
     end
 end
 digitNumber = cnt;
+
 % 获取训练数据特征
 cellSize = [4, 4];
 tp_image = readImage(trainSets, 1);
 imgSize = size(tp_image);
 [hog_4x4, ~] = extractHOGFeatures(tp_image,'CellSize',[4 4]);
 hogFeatureSize = length(hog_4x4);
-trainingFeatures = extracthog(trainSets,digitNumber,imgSize,cellSize,hogFeatureSize);
+trainingFeatures = extracthog(trainSets,digitNumber,imgSize,cellSize,hogFeatureSize); % 提取hog特征
 trainingLabels = cat(1, trainSets.Label);
+
 % 训练分类器
 labelNumber = 10;
 model = cell(labelNumber,1);
-for k=0:labelNumber-1
+for k=0: labelNumber-1
     label=trainingLabels==k;
     model{k+1} = svmtrain(trainingFeatures,label);%fitcsvm
 end
-% 测试集的准确性
-classt=zeros(digitNumber,labelNumber);
-for i = 1: labelNumber
-    classt(:,i) = svmclassify(model{i},trainingFeatures); 
-end
-for j=1:digitNumber
-    p =find(classt(j,:)==1);
-    labelt(j).predict=p-1;
-end
-labeltp=cat(1,labelt.predict);%没有进行多标签处理
-labeltp=reshape(labeltp,[digitNumber/labelNumber,labelNumber]);
-[labelreal,~]=meshgrid(1:labelNumber,1:digitNumber/labelNumber);
-deltp=labeltp-labelreal+1;
-CorrectRate=1-sum(deltp(:))/digitNumber;
-%预测
-testfile='digittest/手写字/';
-% Extract HOG features from the test set
-picnames=dir([testfile '*.png']);
-digitNumber=size(picnames,1);
-for j=digitNumber-labelNumber+1:digitNumber
-    testset(j-digitNumber+labelNumber).File=[testfile picnames(j).name];
-end 
-digitNumber=10;
-testFeatures = extracthog(testset,digitNumber,imgSize,cellSize,hogFeatureSize);
-%轮流预测
-for j=1:digitNumber
-    for k=1:labelNumber
-       classp(j,k) = svmclassify(model{k},testFeatures(j,:));
+
+% 提取图像中数字的特征值
+row_1_Features = extracthog_frame(row_1, rect_number, imgSize,cellSize,hogFeatureSize); % 提取hog特征
+row_2_Features = extracthog_frame(row_2, rect_number, imgSize,cellSize,hogFeatureSize); % 提取hog特征
+
+% 识别第一排数字并显示识别结果
+for j=1: size(row_1, 1);
+    for k=1: labelNumber
+       classp(j, k) = svmclassify(model{k}, row_1_Features(j, :));
     end
-    p =find(classp(j,:)==1);
+    p = find(classp(j, :)==1);
     if ~isempty(p)
         labelp(j).predict=p-1;
+        row_1_data(j, 1) = p(1) - 1;
+    else
+        row_1_data(j, 1) = -1;
     end
 end
+window = figure();
+table_ = uitable(window, 'Data', row_1_data);
+
+% 识别第二排数字并显示识别结果
+for j=1: size(row_2, 1);
+    for k=1: labelNumber
+       classp(j, k) = svmclassify(model{k}, row_2_Features(j, :));
+    end
+    p = find(classp(j, :)==1);
+    if ~isempty(p)
+        labelp(j).predict=p-1;
+        row_2_data(j, 1) = p(1) - 1;
+    else
+        row_2_data(j, 1) = -1;
+    end
+end
+window = figure();
+table_ = uitable(window, 'Data', row_2_data);
