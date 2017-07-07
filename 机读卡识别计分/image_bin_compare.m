@@ -175,7 +175,7 @@ corrected_img = imwarp(I, tfrom);
 subplot(122); imshow(corrected_img); title('图像校正');
 
 %% 选择题识别
-% 二值化
+% 二值化校正后图像
 I = corrected_img;
 I_double = im2double(I);
 AdaptT = adaptthresh(I, 'Statistic', 'median',  'ForegroundPolarity', 'dark'); % 自适应阈值
@@ -191,10 +191,51 @@ roi(1, 1:4) = condi_roi(index(2)).BoundingBox; roi(2, 1:4) = condi_roi(index(3))
 roi(3, 1:4) = condi_roi(index(4)).BoundingBox; % 之所以从index(2)开始是因为index(1)为图片整体的外接框
 rectangle('position', roi(1,:), 'EdgeColor', 'r', 'lineWidth', 1);  
 rectangle('position', roi(2,:), 'EdgeColor', 'r', 'lineWidth', 1);  hold off;
-% 选择题位置识别
-rect_choose = imcrop(Binary, roi(1, :));
-rect_choose = medfilt2(rect_choose, floor(size(rect_choose)/16)*2+1);
-subplot(122); imshow(rect_choose); 
+
+% 选择题区域内部参数设置
+rect_choose = im2bw(imcrop(Binary, roi(1, :)));
+subplot(122); imshow(rect_choose); title('选择题区域处理');
+ratio = size(rect_choose, 2) / 20;      % 计算比例
+first_answer_pos(1:2) = [1.2 * ratio, 1.55 * ratio];
+s_row_interval = 0.25 * ratio; b_row_interval = 0.5 * ratio; % 大小横间距
+s_col_interval = 0.3 * ratio; b_col_interval = 1.2 * ratio; % 大小纵间距
+answer_height = 0.45 * ratio; answer_width = 0.7 * ratio;    % 答案空格的宽高
+
+% 选择题内部框选(15*16的矩阵)
+for i = 1:15
+    for j = 1:16
+        add_w = (j - 1) * s_col_interval + floor((j-1)/4) * b_col_interval - floor((j-1)/4) * s_col_interval; % 加上间距
+        add_w = add_w + (j-1) * answer_width;   % 加上每个答案格子的宽度
+        add_h = (i - 1) * s_row_interval + floor((i-1)/5) * b_row_interval - floor((i-1)/5) * s_row_interval; % 加上间距
+        add_h = add_h + (i-1) * answer_height;  % 加上每个答案格子的高度
+        answer_mat(i, j, 1:4) = [first_answer_pos(1) + add_w, first_answer_pos(2) + add_h, answer_width, answer_height]; 
+    end
+end
+
+% 显示框选结果
+hold on;
+for i = 1:15
+    for j = 1:16
+        rectangle('position', answer_mat(i, j, :), 'EdgeColor', 'r', 'lineWidth', 1); 
+    end
+end
+hold off;
+
+% 将答题情况记录到二维矩阵中
+for i = 1:15
+    for j = 1:4
+        for k = (j-1)*4+1:j*4
+            tmp_rect(:) = answer_mat(i, k, :);
+            tmp_img = imcrop(rect_choose, tmp_rect(:));
+            tmp_mat = tmp_img == 0;
+            tmp_(k - (j-1)*4) = sum(tmp_mat(:));
+        end
+        [tmp_max, tmp_index] = max(tmp_);
+        answer_status(i, j) = tmp_index;    
+    end
+end
+
+window = figure(); uitable(window, 'Data', answer_status(:, :)); title('选择题选择结果');
 
 %% 数字识别
 % 选取数字区域
