@@ -9,7 +9,7 @@ import imutils
 from imutils.perspective import four_point_transform
 from coreNumberReco import *
 from ocrNumberReco import *
-
+from baiduAPIReco import *
 
 ## 卷子的长宽
 width1=800
@@ -156,8 +156,8 @@ def judge0(x,y):
 def NumberRecg(InImg):
     NumberMat = GetNumberMat(InImg, 24) # 24代表有24个数字需要提取
     #KNNclf(NumberMat, 24)       # 使用KNN进行识别
-    ocrReco(NumberMat, 24)     # 使用ocr库进行识别
-
+    #ocrReco(NumberMat, 24)     # 使用ocr库进行识别
+    baiduReco(NumberMat, 24)    # 使用baidu OCR API进行识别
 
 # 提取数字的区域
 # 提取数字的分辨率为32*54 = 1728
@@ -185,6 +185,8 @@ def GetNumberMat(NumImg_, size_):
         tmpMat = NumberRect[row_1[i, 2]:row_1[i, 2] + row_1[i, 4], row_1[i, 1]:row_1[i, 1] + row_1[i, 3]]
 
         tmpMat = projectImg(tmpMat) # 投影变换，将54*32图像压缩为28*28的图像
+        # cv2.imshow('no dfs', tmpMat)
+        # cv2.waitKey(0)
         # 用dfs消除边缘噪声
         [h, w] = tmpMat.shape
         vis = np.zeros((h, w), int)  # 标记二维数组，判断是否遍历
@@ -193,7 +195,7 @@ def GetNumberMat(NumImg_, size_):
                 if vis[i, j] == 0 and tmpMat[i, j] == 0:
                     [tmpMat, vis] = dfs(tmpMat, i, j, vis, False)
 
-        # cv2.imshow('window_1', tmpMat)
+        # cv2.imshow('dfs', tmpMat)
         # cv2.waitKey(0)
         returnMat[cnt] = reverseImage(tmpMat)
         cnt += 1
@@ -215,6 +217,8 @@ def GetNumberMat(NumImg_, size_):
         tmpMat = NumberRect[row_2[i, 2]:row_2[i, 2] + row_2[i, 4], row_2[i, 1]:row_2[i, 1] + row_2[i, 3]]
 
         tmpMat = projectImg(tmpMat)  # 投影变换，将54*32图像压缩为28*28的图像
+        # cv2.imshow('no dfs', tmpMat)
+        # cv2.waitKey(0)
         # 用dfs消除边缘噪声
         [h, w] = tmpMat.shape
         vis = np.zeros((h, w), int)  # 标记二维数组，判断是否遍历
@@ -223,7 +227,7 @@ def GetNumberMat(NumImg_, size_):
                 if vis[i, j] == 0 and tmpMat[i, j] == 0:
                     [tmpMat, vis] = dfs(tmpMat, i, j, vis, False)
 
-        # cv2.imshow('a', tmpMat)
+        # cv2.imshow('dfs', tmpMat)
         # cv2.waitKey(0)
         returnMat[cnt] = reverseImage(tmpMat)
         cnt += 1

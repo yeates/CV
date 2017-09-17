@@ -1,6 +1,6 @@
 # -*- coding:utf8 -*-
 # -*- coder：yeates -*-
-# -*- 神经网络-手写数字识别 -*-
+# -*- 神经网络-手写数字识别：使用ocr识别函数的方法 -*-
 
 from pyocr import pyocr
 from PIL import Image

@@ -15,7 +15,7 @@ import ImgProcess as IC
 # __________MAIN__________
 plt.close('all')
 ## 读取原图
-I = cv2.imread('./img/newMoudleTestImag/ipadair (10).jpg')
+I = cv2.imread('./img/newMoudleTestImag/123.jpg')
 
 correctedSource, correctedImage = IC.ImgCorrect(I)  # 图像校正
 NumberImage = IC.ChooseRecg(correctedImage, correctedSource) # 选择题识别

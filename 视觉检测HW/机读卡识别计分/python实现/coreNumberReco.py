@@ -1,6 +1,6 @@
 # -*- coding:utf8 -*-
 # -*- coder：yeates -*-
-# -*- 神经网络-手写数字识别 -*-
+# -*- 神经网络-手写数字识别：使用kNN识别的方法 -*-
 
 import os
 from PIL import Image
