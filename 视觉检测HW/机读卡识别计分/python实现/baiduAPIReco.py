@@ -49,8 +49,8 @@ def baiduReco(wMat, size_):
     plt.imshow(rTwoMat, cmap='gray'), plt.title('second row number')
     plt.show()
 
-    youdaoAPI(r'temp/onNumber.png')
-    youdaoAPI(r'temp/twNumber.png')
+    youdaoAPI(r'temp/oneNumber.png')
+    youdaoAPI(r'temp/twoNumber.png')
 
 
 def youdaoAPI(filepath):
